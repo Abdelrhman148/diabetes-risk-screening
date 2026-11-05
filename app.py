@@ -61,14 +61,31 @@ if L == "ar":
     </style>""", unsafe_allow_html=True)
 
 
+def find_file(name):
+    """Look for a file in models/, next to app.py, or anywhere inside the repo."""
+    for p in (BASE / "models" / name, BASE / name):
+        if p.exists():
+            return p
+    hits = sorted(BASE.rglob(name))
+    return hits[0] if hits else None
+
+
 @st.cache_resource
 def load():
-    bundle = joblib.load(BASE / "models" / "diabetes_pipeline.joblib")
-    metrics = json.load(open(BASE / "models" / "metrics.json"))
-    return bundle, metrics
+    model_path, metrics_path = find_file("diabetes_pipeline.joblib"), find_file("metrics.json")
+    if model_path is None or metrics_path is None:
+        return None, None
+    return joblib.load(model_path), json.load(open(metrics_path))
 
 
 bundle, metrics = load()
+if bundle is None:
+    files = sorted(str(p.relative_to(BASE)) for p in BASE.rglob("*") if p.is_file() and ".git" not in p.parts)
+    st.error("Model files not found in the repository (diabetes_pipeline.joblib / metrics.json). "
+             "Upload them to GitHub, then reboot the app.")
+    st.write("Files the app can see:")
+    st.code("\n".join(files[:60]))
+    st.stop()
 pipe, threshold = bundle["pipeline"], bundle["threshold"]
 
 st.title(t["title"])
@@ -119,3 +136,4 @@ with st.expander(t["about"]):
         t["recall"]: f"{tm['recall']:.1%}", t["prec"]: f"{tm['precision']:.1%}",
         "ROC-AUC": f"{tm['roc_auc']:.3f}", t["acc"]: f"{tm['accuracy']:.1%}"}}))
     st.write(t["limits"])
+
